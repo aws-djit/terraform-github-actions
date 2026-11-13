@@ -1,0 +1,78 @@
+
+name: Terraform AWS Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Choose infrastructure operation"
+        required: true
+        type: choice
+        options:
+          - apply
+          - destroy
+
+      confirm:
+        description: "Type yes to confirm"
+        required: true
+        type: choice
+        options:
+          - no
+          - yes
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: terraform-dev-state
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'apply' && inputs.confirm == 'yes'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'destroy' && inputs.confirm == 'yes'
+        run: terraform destroy -auto-approve
+
+      - name: Terraform Output
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'apply' && inputs.confirm == 'yes'
+        run: terraform output
